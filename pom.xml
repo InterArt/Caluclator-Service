@@ -17,7 +17,7 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<java.version>1.8</java.version>
+		<java.version>1.7</java.version>
 		<slf4j.version>1.7.14</slf4j.version>
 		<model.mapper>0.7.5</model.mapper>
 		<spring.cloud.aws.version>1.0.6.RELEASE</spring.cloud.aws.version>
@@ -63,6 +63,18 @@
 			<groupId>org.apache.tomcat.embed</groupId>
 			<artifactId>tomcat-embed-jasper</artifactId>
 			<!--<scope>provided</scope>-->
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-jexl3</artifactId>
+			<version>3.1</version>
+			<exclusions>
+				<exclusion>
+					<groupId>commons-logging</groupId>
+					<artifactId>commons-logging</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 	</dependencies>
