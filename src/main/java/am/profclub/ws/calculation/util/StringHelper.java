@@ -5,6 +5,6 @@ package am.profclub.ws.calculation.util;
  */
 public class StringHelper {
 	public static boolean isBlank(String arg) {
-		return arg == null || arg.trim().length() == 0;
+		return arg == null || arg.length() == 0;
 	}
 }
