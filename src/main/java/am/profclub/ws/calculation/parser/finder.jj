@@ -1,0 +1,140 @@
+/*
+This grammar defines a parser that will identify and resolve AtTask formulas within an arbitrary string.
+*/
+
+options {
+	LOOKAHEAD = 1;
+	CHOICE_AMBIGUITY_CHECK = 2;
+	OTHER_AMBIGUITY_CHECK = 1;
+	STATIC = false;
+	DEBUG_PARSER = false;
+	DEBUG_LOOKAHEAD = false;
+	DEBUG_TOKEN_MANAGER = false;
+	ERROR_REPORTING = true;
+	JAVA_UNICODE_ESCAPE = false;
+	UNICODE_INPUT = true;
+	IGNORE_CASE = false;
+	USER_TOKEN_MANAGER = false;
+	USER_CHAR_STREAM = false;
+	BUILD_PARSER = true;
+	BUILD_TOKEN_MANAGER = true;
+	SANITY_CHECK = true;
+	FORCE_LA_CHECK = false;
+}
+
+PARSER_BEGIN(FormulaFinder)
+
+package com.attask.biz.formula;
+
+import java.util.*;
+import com.attask.biz.*;
+
+/**
+ * A parser to evaluate and resolve formulas in an arbitrary string.
+ */
+public class FormulaFinder {
+	// This holds the final output string after parsing.
+	private StringBuilder output = null;
+
+	// A resolver that is used to replace references to fields, wildcards, and functions.
+	private FormulaProcessor processor = null;
+
+	public void setProcessor(FormulaProcessor processor) {
+		this.processor = processor;
+	}
+
+	public FormulaProcessor getProcessor() {
+		return processor;
+	}
+}
+
+PARSER_END(FormulaFinder)
+
+/* Punctuation */
+TOKEN :
+{
+	< TEXT: ( ~["{", "}", "'", "\""] )+ >
+|	< FORMULA_START: "{!" >
+|	< OPEN_BRACE: "{" >
+|	< CLOSE_BRACE: "}" >
+|	< QUOTE: "\"" >
+|	< SINGLE_QUOTE: "'" >
+}
+
+
+public String search() :
+{ output = new StringBuilder(); }
+{
+	[ Text() ]
+	<EOF>
+
+	{ return output.toString(); }
+}
+
+private void Text() :
+{}
+{
+	(
+		Formula() |
+		NotFormula()
+	)+
+}
+
+private void NotFormula() :
+{}
+{
+	(
+		<TEXT> |
+		<OPEN_BRACE> |
+		<CLOSE_BRACE> |
+		<QUOTE> |
+		<SINGLE_QUOTE>
+	)
+
+	{ output.append(token); }
+}
+
+private void Formula() :
+{}
+{
+	<FORMULA_START>
+	ProcessFormula()
+}
+
+JAVACODE
+private void ProcessFormula() throws ParseException {
+	StringBuilder formula = new StringBuilder();
+
+	Token next;
+	Token quote = null;
+	int nesting = 1;
+
+	while (true) {
+		next = getToken(1);
+		if (next.kind == EOF) {
+			throw new ParseException("Unclosed formula");
+		} else if (quote != null && next.kind == quote.kind) {
+			// exiting a quoted string
+			quote = null;
+		} else if (quote == null && (next.kind == QUOTE || next.kind == SINGLE_QUOTE)) {
+			// entering a quoted string
+			quote = next;
+		} else if (quote == null) {
+			if (next.kind == OPEN_BRACE) {
+				nesting++;
+			} else if (next.kind == CLOSE_BRACE) {
+				nesting--;
+				if (nesting == 0) {
+					getNextToken();
+					break;
+				}
+			}
+		}
+
+		formula.append(next);
+		getNextToken();
+	}
+
+	if (processor == null) throw new ParseException("Encountered formula with no processor.");
+	output.append(processor.processFormula(formula.toString()));
+}

@@ -1,0 +1,327 @@
+/*
+This grammar defines a parser that can convert an AtTask formula into a JEXL expression.
+*/
+
+options {
+	LOOKAHEAD = 1;
+	CHOICE_AMBIGUITY_CHECK = 2;
+	OTHER_AMBIGUITY_CHECK = 1;
+	STATIC = false;
+	DEBUG_PARSER = false;
+	DEBUG_LOOKAHEAD = false;
+	DEBUG_TOKEN_MANAGER = false;
+	ERROR_REPORTING = true;
+	JAVA_UNICODE_ESCAPE = false;
+	UNICODE_INPUT = true;
+	IGNORE_CASE = false;
+	USER_TOKEN_MANAGER = false;
+	USER_CHAR_STREAM = false;
+	BUILD_PARSER = true;
+	BUILD_TOKEN_MANAGER = true;
+	SANITY_CHECK = true;
+	FORCE_LA_CHECK = false;
+}
+
+PARSER_BEGIN(FormulaParser)
+
+package com.attask.biz.formula;
+
+import java.util.*;
+import com.attask.biz.*;
+
+/**
+ * A parser to convert an AtTask custom formula into a JEXL expression for evaluation.
+ */
+public class FormulaParser {
+	// This holds the final output string after parsing.
+	private StringBuilder output = null;
+
+	// A resolver that is used to replace references to fields, wildcards, and functions.
+	private FormulaResolver resolver = null;
+
+	public void setResolver(FormulaResolver resolver) {
+		this.resolver = resolver;
+	}
+
+	public FormulaResolver getResolver() {
+		return resolver;
+	}
+
+	private String resolveField(String objectName, String fieldName) throws ParseException {
+		if (resolver == null) throw new ParseException("Encountered field without a valid formula resolver.");
+		return resolver.resolveField(objectName, fieldName);
+	}
+}
+
+PARSER_END(FormulaParser)
+
+/* White space */
+SKIP :
+{ " " | "\t" | "\n" | "\r" | "\f" }
+
+/* Punctuation */
+TOKEN :
+{
+	< OPEN_PAREN: "(" >
+|	< CLOSE_PAREN: ")" >
+|	< COMMA: "," >
+|	< DOT: "." >
+}
+
+/* Operators */
+TOKEN :
+{
+	< PLUS: "+" >
+|	< MINUS: "-" >
+|	< MULTIPLY: "*" >
+|	< DIVIDE: "/" >
+|	< MODULUS: ("%" | "mod" ) >
+|	< AND: ("&&" | "and" ) >
+|	< OR: ("||" | "or") >
+|	< NOT: ("!" | "not") >
+|	< BIT_AND: "&" >
+|	< BIT_OR: "|" >
+|	< BIT_XOR: "^" >
+|	< BIT_NOT: "~" >
+|	< EQUAL: ("=" | "==") >
+|	< NOT_EQUAL: "!=" >
+|	< LESS_THAN: "<" >
+|	< GREATER_THAN: ">" >
+|	< LESS_EQUAL: "<=" >
+|	< GREATER_EQUAL: ">=" >
+}
+
+/* Literals */
+TOKEN :
+{
+	< BOOLEAN_LITERAL: ( "true" ) | ( "false" ) >
+|	< INTEGER_LITERAL: ( [ "0"-"9" ] )+ >
+|	< FLOAT_LITERAL: ( <INTEGER_LITERAL> )? "." <INTEGER_LITERAL> >
+|	< STRING_LITERAL: ( "'" ( ~["'"] )* "'" ) | ( "\"" ( ~["\""] )* "\"" ) >
+|	< NULL: "null" >
+}
+
+/* Identifiers */
+TOKEN :
+{
+	< IDENTIFIER: ["A"-"Z", "a"-"z", "_"] ( ["A"-"Z", "a"-"z", "_", "|", "0"-"9"] )* >
+|	< DE_FIELD: "{DE:" ( ~["}"] )+ "}" >
+|	< FIELD: "{" <IDENTIFIER> "}" >
+|	< DATEWILDCARD: ("$$TODAY" | "$$NOW" ) ( ["A"-"Z", "a"-"z", "0"-"9", "+", "-"] )* >
+|	< WILDCARD: "$$" <IDENTIFIER> >
+}
+
+
+/**
+ * Parses a formula, converting it to a JEXL expression.
+ * @return The JEXL expression.
+ */
+public String parseFormula() :
+{ output = new StringBuilder(); }
+{
+	[ Expression() ]
+	<EOF>
+
+	{ return output.toString(); }
+}
+
+
+
+/**
+ * Matches an expression.
+ */
+private void Expression() :
+{}
+{
+	UnaryExpression()
+	(
+		BinaryOperator()
+		UnaryExpression()
+	)*
+}
+
+private void UnaryExpression() :
+{}
+{
+	[ UnaryOperator() ] PrimaryExpression()
+}
+
+private void PrimaryExpression() :
+{}
+{
+	(
+		Field(null) |
+		DEField(null) |
+		WildCard() |
+		FunctionCall() |
+		Literal() |
+		(
+			<OPEN_PAREN>
+			{ output.append(token); }
+
+			Expression()
+
+			<CLOSE_PAREN>
+			{ output.append(token); }
+		)
+	)
+}
+
+/**
+ * Matches a direct field.
+ */
+private void Field(String objectName) :
+{ StringBuilder fieldName = new StringBuilder(); }
+{
+	<FIELD>
+	{ fieldName.append(token.toString()); }
+	(
+		<DOT>
+		(<FIELD> | <DE_FIELD>)
+		{ fieldName.append('.').append(token.toString()); }
+	)*
+
+	{ output.append(resolveField(objectName, fieldName.toString())); }
+}
+
+/**
+ * Matches a data extension field.
+ */
+private void DEField(String objectName) :
+{}
+{
+	<DE_FIELD>
+	{ output.append(resolveField(objectName, token.toString())); }
+}
+
+/**
+ * Matches a wildcard.
+ */
+private void WildCard() :
+{ String wildcard; boolean field = false; }
+{
+	( <DATEWILDCARD> | <WILDCARD> )
+	{ wildcard = token.toString(); }
+
+	[
+		{ field = true; }
+		<DOT> ( Field(wildcard) | DEField(wildcard) )
+	]
+
+	{
+		if (!field) {
+			if (resolver == null) throw new ParseException("Encountered wildcard without a valid formula resolver.");
+			output.append(resolver.resolveWildcard(wildcard));
+		}
+	}
+}
+
+/**
+ * Matches a function call.
+ */
+private void FunctionCall() :
+{ String functionName; List<String> parameters; }
+{
+	{ if (resolver == null) throw new ParseException("Encountered function call without a valid formula resolver."); }
+
+	<IDENTIFIER>
+	{ functionName = token.toString(); }
+
+	parameters = Parameters()
+
+	{ output.append(resolver.resolveFunctionCall(functionName, parameters)); }
+}
+
+private List<String> Parameters() :
+{
+	List<String> result = new ArrayList<String>();
+	StringBuilder main;
+}
+{
+	{
+		// Replace the main output stream with a temporary one.  We want to capture parameter strings, but
+		// it will be the formula resolver's job to actually output them as a valid JEXL expression.
+		main = output;
+	}
+
+	<OPEN_PAREN>
+	[
+		{ output = new StringBuilder(); }
+		Parameter()
+		{ result.add(output.toString()); }
+
+		(
+			<COMMA>
+			{ output = new StringBuilder(); }
+			Parameter()
+			{ result.add(output.toString()); }
+		)*
+	]
+	<CLOSE_PAREN>
+
+	{
+		// Restore the main output stream.
+	 	output = main;
+		return result;
+	}
+}
+
+private void Parameter() :
+{}
+{
+	Expression()
+}
+
+/**
+ * Matches a literal.
+ */
+private void Literal() :
+{}
+{
+	(
+	<BOOLEAN_LITERAL> |
+	<INTEGER_LITERAL> |
+	(
+		<FLOAT_LITERAL>
+		{
+			// JEXL doesn't accept floating point literals without a leading zero.
+			if (token.image.startsWith(".")) output.append("0");
+		}
+	)|
+	<STRING_LITERAL> |
+	<NULL> )
+
+	{ output.append(token); }
+}
+
+/**
+ * Matches an operator.
+ */
+private void BinaryOperator() :
+{}
+{
+	(<PLUS> | <MINUS> | <MULTIPLY> | <DIVIDE> | <MODULUS> |
+	<AND> | <OR> | <BIT_AND> | <BIT_OR> | <BIT_XOR> |
+	<NOT_EQUAL> | <LESS_THAN> | <GREATER_THAN> | <LESS_EQUAL> | <GREATER_EQUAL> |
+	(
+		<EQUAL>
+		{
+			// JEXL doesn't support '=' for equality, so convert it to '=='
+			if (token.image.equals("=")) token.image = "==";
+		}
+	)
+	)
+
+	{ output.append(" ").append(token).append(" "); }
+}
+
+/**
+ * Matches a unary operator.
+ */
+private void UnaryOperator() :
+{}
+{
+ 	( <MINUS> | <NOT> | <BIT_NOT> )
+
+	{ output.append(" ").append(token); }
+}

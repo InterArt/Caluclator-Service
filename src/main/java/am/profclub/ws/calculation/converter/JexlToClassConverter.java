@@ -9,6 +9,7 @@ import org.springframework.stereotype.*;
 public class JexlToClassConverter implements Converter{
 
 	private static final String basePackage = "am.profclub.calculation";
+
 	@Override
 	public String convert(String expression) {
 		return convert("NULL", expression);

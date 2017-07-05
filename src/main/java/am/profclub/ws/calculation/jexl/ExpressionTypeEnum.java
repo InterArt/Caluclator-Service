@@ -11,6 +11,7 @@ import java.util.*;
  *   ExpressionTypeEnum  used to define what type of aggregate this is. Not used in the API.
  */
 public class ExpressionTypeEnum  extends StringEnum {
+
 	private static Logger log = Logger.getLogger(ExpressionTypeEnum.class);
 
 	public static final int VARARGS = 0;
@@ -106,7 +107,6 @@ public class ExpressionTypeEnum  extends StringEnum {
 			return null;
 		}
 	};
-
 
 	public static final ExpressionTypeEnum MIN = new ExpressionTypeEnum("MIN", "enum.expressiontypeenum.min", "enum.expressiontypeenum.min.text", "enum.expressiontypeenum.min.methodcall",VARARGS) {
 		public Object evaluate(JexlContext jexlContext, Object[] operands) {
@@ -822,11 +822,10 @@ public class ExpressionTypeEnum  extends StringEnum {
 		return StringUtils.toString(operand);
 	}
 
-
-
 	static boolean checkArgs(Object[] operands, int expectedLength) {
 		return checkArgs(operands, expectedLength, false);
 	}
+
 	static boolean checkArgs(Object[] operands, int expectedLength, boolean allowBlank) {
 		if (allowBlank) {
 			return operands != null && operands.length >= expectedLength;

@@ -1,0 +1,12 @@
+package $packageName;
+
+import static java.lang.Math.*;
+$imports
+
+public class $className
+	   implements am.profclub.ws.calculation.tool.CalculatedField {
+
+   public String eval($parameters) {
+       $expression;
+   }
+}

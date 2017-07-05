@@ -6,7 +6,7 @@ import java.util.*;
 /**
  * Created by admin on 7/3/17.
  */
-public class ParamListDto implements Serializable{
+public class ParamListDto implements Serializable {
 
 	private String fieldName;
 
